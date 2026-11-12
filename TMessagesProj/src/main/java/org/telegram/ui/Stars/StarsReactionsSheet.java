@@ -198,6 +198,21 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
         long sendAs,
         Theme.ResourcesProvider resourcesProvider
     ) {
+        this(context, currentAccount, dialogId, (BaseFragment) chatActivity, messageObject, reactors, sendEnabled, liveStories, sendAs, resourcesProvider);
+    }
+
+    public StarsReactionsSheet(
+        Context context,
+        int currentAccount,
+        long dialogId,
+        BaseFragment fragment,
+        MessageObject messageObject,
+        ArrayList<TLRPC.MessageReactor> reactors,
+        boolean sendEnabled,
+        boolean liveStories,
+        long sendAs,
+        Theme.ResourcesProvider resourcesProvider
+    ) {
         super(context, false, resourcesProvider);
 
         this.resourcesProvider = resourcesProvider;
@@ -545,7 +560,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
                 if (sending) return;
 
                 final long totalStars = slider.getValue();
-                if (onSendListener == null && (messageObject == null || chatActivity == null) || iconAnimator != null) {
+                if (onSendListener == null && (messageObject == null || fragment == null) || iconAnimator != null) {
                     return;
                 }
                 if (MessagesController.getInstance(currentAccount).isFrozen()) {
@@ -569,7 +584,7 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
                         }
                         return;
                     } else {
-                        StarsController.PendingPaidReactions pending = starsController.sendPaidReaction(messageObject, chatActivity, totalStars, false, true, peer);
+                        StarsController.PendingPaidReactions pending = starsController.sendPaidReaction(messageObject, fragment, totalStars, false, true, peer);
                         if (pending == null) {
                             return;
                         }
@@ -854,8 +869,11 @@ public class StarsReactionsSheet extends BottomSheet implements NotificationCent
         final View cell;
         final ReactionsLayoutInBubble reactionsLayout;
         final ReactionsLayoutInBubble.ReactionButton button;
-        if (messageObject == null || chatActivity.fragmentView == null || !chatActivity.fragmentView.isAttachedToWindow()) {
-            if (commentsView == null) return;
+        if (messageObject == null || chatActivity == null || chatActivity.fragmentView == null || !chatActivity.fragmentView.isAttachedToWindow()) {
+            if (commentsView == null) {
+                if (pushed != null) pushed.run();
+                return;
+            }
             cell = null;
             reactionsLayout = null;
             button = null;

@@ -389,6 +389,11 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
 
     public ShareAlert(final Context context, ChatActivity fragment, ArrayList<MessageObject> messages, final String text, final String text2, boolean channel, final String copyLink, final String copyLink2, boolean fullScreen, boolean forCall, boolean includeStory, Integer video_timestamp, Theme.ResourcesProvider theme) {
         super(context, true, theme);
+        if (messages != null && !messages.isEmpty()) {
+            currentAccount = messages.get(0).currentAccount;
+        } else if (fragment != null) {
+            currentAccount = fragment.getCurrentAccount();
+        }
         AndroidUtilities.enableEdgeToEdge(getWindow());
 
         iBlur3SourceColor = glassEngine.createThemedColorSource(() -> getThemedColor(Theme.key_windowBackgroundWhite));

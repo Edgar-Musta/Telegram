@@ -17,6 +17,12 @@ repositories {
     google()
 }
 
+// Optional single-architecture build, e.g. -Pabi=arm64-v8a.
+def requestedAbi = providers.gradleProperty('abi').orNull
+if (requestedAbi != null && !(requestedAbi in ['armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'])) {
+    throw new GradleException("Unsupported Android ABI: ${requestedAbi}")
+}
+
 // Strip JLatexMath fonts we don't ship (transitive AAR assets from
 // io.noties.markwon:ext-latex -> ru.noties:jlatexmath-android, ~764 KB total under
 // assets/org/scilab/forge/jlatexmath/fonts/). Has to live in the APK modules — a
@@ -26,6 +32,21 @@ repositories {
 //   drop:  latin/optional/, maths/optional/  (~290 KB; \textbf/\textit/\mathds fall back)
 //          licences/                          (~20 KB; pure license text files)
 subprojects {
+    if (requestedAbi != null) {
+        def restrictAbi = { plugin ->
+            androidComponents.finalizeDsl { extension ->
+                extension.defaultConfig.ndk.abiFilters.clear()
+                extension.defaultConfig.ndk.abiFilters.add(requestedAbi)
+                extension.productFlavors.each { flavor ->
+                    flavor.ndk.abiFilters.clear()
+                    flavor.ndk.abiFilters.add(requestedAbi)
+                }
+            }
+        }
+        plugins.withId('com.android.application', restrictAbi)
+        plugins.withId('com.android.library', restrictAbi)
+    }
+
     plugins.withId('com.android.application') {
         android {
             androidResources {

@@ -13392,6 +13392,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             args.putLong("user_id", UserConfig.getInstance(currentAccount).getClientUserId());
             presentFragment(new ChatActivity(args));
         });
+        if (TeleClipsActivity.isEnabled()) {
+            io.add(R.drawable.msg_teleclips, getString(R.string.TeleClips), () -> presentFragment(new TeleClipsActivity(currentAccount)));
+        }
         if (ApplicationLoader.applicationLoaderInstance != null) {
             ApplicationLoader.applicationLoaderInstance.addItemOptions(io);
         }

@@ -191,6 +191,10 @@ public class ChannelCreateActivity extends BaseFragment implements NotificationC
         this.onFinishListener = onFinishListener;
     }
 
+    public void setInitialName(String name) {
+        nameToSet = name;
+    }
+
     @Override
     public boolean onFragmentCreate() {
         NotificationCenter.getInstance(currentAccount).addWeakObserver(this, NotificationCenter.chatDidCreated);
@@ -1199,6 +1203,7 @@ public class ChannelCreateActivity extends BaseFragment implements NotificationC
                 MessagesController.getInstance(currentAccount).changeChatAvatar(chat_id, null, inputPhoto, inputVideo, inputEmojiMarkup, videoTimestamp, inputVideoPath, avatar, avatarBig, null);
             }
             ChannelCreateActivity activity = new ChannelCreateActivity(bundle);
+            activity.setCurrentAccount(currentAccount);
             activity.setOnFinishListener(onFinishListener);
             presentFragment(activity, true);
         }

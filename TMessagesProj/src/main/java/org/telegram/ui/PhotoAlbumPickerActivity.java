@@ -100,6 +100,7 @@ public class PhotoAlbumPickerActivity extends BaseFragment implements Notificati
     private boolean allowSearchImages = true;
     private boolean allowGifs;
     private boolean allowCaption;
+    private boolean videosOnly;
     private ChatActivity chatActivity;
     private int maxSelectedPhotos;
     private boolean allowOrder = true;
@@ -138,7 +139,9 @@ public class PhotoAlbumPickerActivity extends BaseFragment implements Notificati
 
     @Override
     public boolean onFragmentCreate() {
-        if (selectPhotoType == SELECT_TYPE_AVATAR || selectPhotoType == SELECT_TYPE_WALLPAPER || selectPhotoType == SELECT_TYPE_QR || !allowSearchImages) {
+        if (videosOnly) {
+            albumsSorted = videoAlbums(MediaController.allMediaAlbums);
+        } else if (selectPhotoType == SELECT_TYPE_AVATAR || selectPhotoType == SELECT_TYPE_WALLPAPER || selectPhotoType == SELECT_TYPE_QR || !allowSearchImages) {
             albumsSorted = MediaController.allPhotoAlbums;
         } else {
             albumsSorted = MediaController.allMediaAlbums;
@@ -598,7 +601,9 @@ public class PhotoAlbumPickerActivity extends BaseFragment implements Notificati
         if (id == NotificationCenter.albumsDidLoad) {
             int guid = (Integer) args[0];
             if (classGuid == guid) {
-                if (selectPhotoType == SELECT_TYPE_AVATAR || selectPhotoType == SELECT_TYPE_WALLPAPER || selectPhotoType == SELECT_TYPE_QR || !allowSearchImages) {
+                if (videosOnly) {
+                    albumsSorted = videoAlbums((ArrayList<MediaController.AlbumEntry>) args[1]);
+                } else if (selectPhotoType == SELECT_TYPE_AVATAR || selectPhotoType == SELECT_TYPE_WALLPAPER || selectPhotoType == SELECT_TYPE_QR || !allowSearchImages) {
                     albumsSorted = (ArrayList<MediaController.AlbumEntry>) args[2];
                 } else {
                     albumsSorted = (ArrayList<MediaController.AlbumEntry>) args[1];
@@ -635,6 +640,28 @@ public class PhotoAlbumPickerActivity extends BaseFragment implements Notificati
 
     public void setAllowSearchImages(boolean value) {
         allowSearchImages = value;
+    }
+
+    public void setVideosOnly(boolean value) {
+        videosOnly = value;
+        if (value) allowSearchImages = false;
+    }
+
+    private ArrayList<MediaController.AlbumEntry> videoAlbums(ArrayList<MediaController.AlbumEntry> source) {
+        if (source == null) return null;
+        final ArrayList<MediaController.AlbumEntry> result = new ArrayList<>();
+        for (MediaController.AlbumEntry album : source) {
+            final MediaController.AlbumEntry videos = new MediaController.AlbumEntry(album.bucketId, album.bucketName, null);
+            videos.videoOnly = true;
+            for (MediaController.PhotoEntry photo : album.photos) {
+                if (photo.isVideo) {
+                    if (videos.coverPhoto == null) videos.coverPhoto = photo;
+                    videos.addPhoto(photo);
+                }
+            }
+            if (!videos.photos.isEmpty()) result.add(videos);
+        }
+        return result;
     }
 
     public void setDelegate(PhotoAlbumPickerActivityDelegate delegate) {

@@ -1862,6 +1862,7 @@ public class StarsController {
         public MessageId message;
         public MessageObject messageObject;
         public ChatActivity chatActivity;
+        private final BaseFragment fragment;
         public Bulletin bulletin;
         public Bulletin.TwoLineAnimatedLottieLayout bulletinLayout;
         public Bulletin.UndoButton bulletinButton;
@@ -1897,7 +1898,7 @@ public class StarsController {
             if (isAnonymous()) {
                 return getString(R.string.StarsSentAnonymouslyTitle);
             } else if (getPeerId() != 0 && getPeerId() != UserConfig.getInstance(currentAccount).getClientUserId()) {
-                return formatString(R.string.StarsSentTitleChannel, DialogObject.getShortName(getPeerId()));
+                return formatString(R.string.StarsSentTitleChannel, DialogObject.getShortName(currentAccount, getPeerId()));
             } else {
                 return getString(R.string.StarsSentTitle);
             }
@@ -1910,24 +1911,36 @@ public class StarsController {
             long currentTime,
             boolean affect
         ) {
+            this(message, messageObject, (BaseFragment) chatActivity, currentTime, affect);
+        }
+
+        public PendingPaidReactions(
+            MessageId message,
+            MessageObject messageObject,
+            BaseFragment fragment,
+            long currentTime,
+            boolean affect
+        ) {
             this.message = message;
             this.messageObject = messageObject;
-            this.chatActivity = chatActivity;
+            this.fragment = fragment;
+            this.chatActivity = fragment instanceof ChatActivity ? (ChatActivity) fragment : null;
 
-            final Context context = getContext(chatActivity);
-            bulletinLayout = new Bulletin.TwoLineAnimatedLottieLayout(context, chatActivity.themeDelegate);
+            final Context context = getContext(fragment);
+            final Theme.ResourcesProvider resourcesProvider = chatActivity != null ? chatActivity.themeDelegate : fragment.getResourceProvider();
+            bulletinLayout = new Bulletin.TwoLineAnimatedLottieLayout(context, resourcesProvider);
             bulletinLayout.setAnimation(R.raw.stars_topup);
             bulletinLayout.titleTextView.setText(getToastTitle());
-            bulletinButton = new Bulletin.UndoButton(context, true, false, chatActivity.themeDelegate);
+            bulletinButton = new Bulletin.UndoButton(context, true, false, resourcesProvider);
             bulletinButton.setText(LocaleController.getString(R.string.StarsSentUndo));
             bulletinButton.setUndoAction(this::cancel);
-            timerView = new ThemedTimerView(context, chatActivity.themeDelegate);
+            timerView = new ThemedTimerView(context, resourcesProvider);
             timerView.timeLeft = REACTIONS_TIMEOUT;
-            ThemedTimerView.bindColor((ThemedTimerView) timerView, Theme.key_undo_cancelColor, chatActivity.themeDelegate);
+            ThemedTimerView.bindColor((ThemedTimerView) timerView, Theme.key_undo_cancelColor, resourcesProvider);
             bulletinButton.addView(timerView, LayoutHelper.createFrame(20, 20, Gravity.RIGHT | Gravity.CENTER_VERTICAL, 0, 0, 12, 0));
             bulletinButton.undoTextView.setPadding(dp(12), dp(8), dp(20 + 10), dp(8));
             bulletinLayout.setButton(bulletinButton);
-            bulletin = BulletinFactory.of(chatActivity).create(bulletinLayout, -1);
+            bulletin = BulletinFactory.of(fragment).create(bulletinLayout, -1);
             bulletin.hideAfterBottomSheet = false;
             if (affect) {
                 bulletin.show(true);
@@ -2064,17 +2077,17 @@ public class StarsController {
 
                 String name;
                 if (message.did >= 0) {
-                    TLRPC.User user = chatActivity.getMessagesController().getUser(message.did);
+                    TLRPC.User user = messagesController.getUser(message.did);
                     name = UserObject.getForcedFirstName(user);
                 } else {
-                    TLRPC.Chat chat = chatActivity.getMessagesController().getChat(-message.did);
+                    TLRPC.Chat chat = messagesController.getChat(-message.did);
                     name = chat == null ? "" : chat.title;
                 }
-                Context context = chatActivity.getContext();
+                Context context = fragment.getContext();
                 if (context == null) context = LaunchActivity.instance;
                 if (context == null) context = ApplicationLoader.applicationContext;
-                new StarsIntroActivity.StarsNeededSheet(context, chatActivity.getResourceProvider(), totalStars, StarsIntroActivity.StarsNeededSheet.TYPE_REACTIONS, name, () -> {
-                    sendPaidReaction(messageObject, chatActivity, totalStars, true, true, peer);
+                new StarsIntroActivity.StarsNeededSheet(context, fragment.getResourceProvider(), totalStars, StarsIntroActivity.StarsNeededSheet.TYPE_REACTIONS, name, () -> {
+                    sendPaidReaction(messageObject, fragment, totalStars, true, true, peer);
                 }, 0).show();
 
                 return;
@@ -2112,17 +2125,17 @@ public class StarsController {
                     if ("BALANCE_TOO_LOW".equals(error.text)) {
                         String name;
                         if (message.did >= 0) {
-                            TLRPC.User user = chatActivity.getMessagesController().getUser(message.did);
+                            TLRPC.User user = messagesController.getUser(message.did);
                             name = UserObject.getForcedFirstName(user);
                         } else {
-                            TLRPC.Chat chat = chatActivity.getMessagesController().getChat(-message.did);
+                            TLRPC.Chat chat = messagesController.getChat(-message.did);
                             name = chat == null ? "" : chat.title;
                         }
-                        Context context = chatActivity.getContext();
+                        Context context = fragment.getContext();
                         if (context == null) context = LaunchActivity.instance;
                         if (context == null) context = ApplicationLoader.applicationContext;
-                        new StarsIntroActivity.StarsNeededSheet(context, chatActivity.getResourceProvider(), totalStars, StarsIntroActivity.StarsNeededSheet.TYPE_REACTIONS, name, () -> {
-                            sendPaidReaction(messageObject, chatActivity, totalStars, true, true, peer);
+                        new StarsIntroActivity.StarsNeededSheet(context, fragment.getResourceProvider(), totalStars, StarsIntroActivity.StarsNeededSheet.TYPE_REACTIONS, name, () -> {
+                            sendPaidReaction(messageObject, fragment, totalStars, true, true, peer);
                         }, 0).show();
                     }
 
@@ -2155,52 +2168,64 @@ public class StarsController {
         boolean checkBalance,
         Long peer
     ) {
+        return sendPaidReaction(messageObject, (BaseFragment) chatActivity, amount, affect, checkBalance, peer);
+    }
+
+    public StarsController.PendingPaidReactions sendPaidReaction(
+        MessageObject messageObject,
+        BaseFragment fragment,
+        long amount,
+        boolean affect,
+        boolean checkBalance,
+        Long peer
+    ) {
+        if (messageObject == null || fragment == null || fragment.isFinished || amount <= 0) return null;
         final MessageId key = MessageId.from(messageObject);
         final StarsController s = StarsController.getInstance(currentAccount);
         final long totalStars = amount;
-        final Context context = getContext(chatActivity);
+        final Context context = getContext(fragment);
         if (context == null) return null;
         if (checkBalance && s.balanceAvailable() && s.getBalance(false) <= 0) {
-            final long dialogId = chatActivity.getDialogId();
+            final long dialogId = key.did;
             String name;
             if (dialogId >= 0) {
-                TLRPC.User user = chatActivity.getMessagesController().getUser(dialogId);
+                TLRPC.User user = fragment.getMessagesController().getUser(dialogId);
                 name = UserObject.getForcedFirstName(user);
             } else {
-                TLRPC.Chat chat = chatActivity.getMessagesController().getChat(-dialogId);
+                TLRPC.Chat chat = fragment.getMessagesController().getChat(-dialogId);
                 name = chat == null ? "" : chat.title;
             }
             if (context == null) return null;
-            new StarsIntroActivity.StarsNeededSheet(context, chatActivity.getResourceProvider(), totalStars, StarsIntroActivity.StarsNeededSheet.TYPE_REACTIONS, name, () -> {
-                sendPaidReaction(messageObject, chatActivity, totalStars, true, true, peer);
+            new StarsIntroActivity.StarsNeededSheet(context, fragment.getResourceProvider(), totalStars, StarsIntroActivity.StarsNeededSheet.TYPE_REACTIONS, name, () -> {
+                sendPaidReaction(messageObject, fragment, totalStars, true, true, peer);
             }, 0).show();
             return null;
         }
-        if (currentPendingReactions == null || !currentPendingReactions.message.equals(key)) {
+        if (currentPendingReactions == null || !currentPendingReactions.message.equals(key) || currentPendingReactions.fragment != fragment) {
             if (currentPendingReactions != null) {
                 currentPendingReactions.close();
             }
-            currentPendingReactions = new PendingPaidReactions(key, messageObject, chatActivity, ConnectionsManager.getInstance(currentAccount).getCurrentTime(), affect);
+            currentPendingReactions = new PendingPaidReactions(key, messageObject, fragment, ConnectionsManager.getInstance(currentAccount).getCurrentTime(), affect);
             currentPendingReactions.peer = peer;
         }
         if (currentPendingReactions.amount + amount > MessagesController.getInstance(currentAccount).starsPaidReactionAmountMax) {
             currentPendingReactions.close();
-            currentPendingReactions = new PendingPaidReactions(key, messageObject, chatActivity, ConnectionsManager.getInstance(currentAccount).getCurrentTime(), affect);
+            currentPendingReactions = new PendingPaidReactions(key, messageObject, fragment, ConnectionsManager.getInstance(currentAccount).getCurrentTime(), affect);
         }
         final long totalStars2 = currentPendingReactions.amount + amount;
         if (checkBalance && s.balanceAvailable() && s.getBalance(false) < totalStars2) {
             currentPendingReactions.cancel();
-            final long dialogId = chatActivity.getDialogId();
+            final long dialogId = key.did;
             String name;
             if (dialogId >= 0) {
-                TLRPC.User user = chatActivity.getMessagesController().getUser(dialogId);
+                TLRPC.User user = fragment.getMessagesController().getUser(dialogId);
                 name = UserObject.getForcedFirstName(user);
             } else {
-                TLRPC.Chat chat = chatActivity.getMessagesController().getChat(-dialogId);
+                TLRPC.Chat chat = fragment.getMessagesController().getChat(-dialogId);
                 name = chat == null ? "" : chat.title;
             }
-            new StarsIntroActivity.StarsNeededSheet(context, chatActivity.getResourceProvider(), totalStars2, StarsIntroActivity.StarsNeededSheet.TYPE_REACTIONS, name, () -> {
-                sendPaidReaction(messageObject, chatActivity, totalStars2, true, true, peer);
+            new StarsIntroActivity.StarsNeededSheet(context, fragment.getResourceProvider(), totalStars2, StarsIntroActivity.StarsNeededSheet.TYPE_REACTIONS, name, () -> {
+                sendPaidReaction(messageObject, fragment, totalStars2, true, true, peer);
             }, 0).show();
             return null;
         }

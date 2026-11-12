@@ -8,6 +8,7 @@ import static org.telegram.ui.Components.Premium.LimitReachedBottomSheet.TYPE_AC
 import org.telegram.messenger.FileLog;
 import android.animation.Animator;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -106,10 +107,16 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
     private static final int INDEX_SETTINGS = 2;
     private static final int INDEX_CALLS = 3;
     private static final int INDEX_PROFILE = 4;
+    private static final int INDEX_TELECLIPS = 5;
 
     private static int indexToPosition(int index) {
+        if (index == INDEX_TELECLIPS) return -1;
         return index > 2 ? index - 1 : index;
     }
+
+    private final SharedPreferences.OnSharedPreferenceChangeListener teleClipsPreferenceListener = (preferences, key) -> {
+        if (TeleClipsActivity.PREF_KEY.equals(key)) AndroidUtilities.runOnUIThread(this::checkTeleClipsTab);
+    };
 
     private static final int ANIMATOR_ID_TABS_VISIBLE = 0;
     private final BoolAnimator animatorTabsVisible = new BoolAnimator(ANIMATOR_ID_TABS_VISIBLE,
@@ -290,6 +297,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         blur3_updateColors();
         checkContactsTabBadge();
         checkUnreadCount(true);
+        checkTeleClipsTab();
 
         showAccountChangeHint();
     }
@@ -324,14 +332,16 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         tabsView = new MainTabsLayout(context, resourceProvider);
         tabsView.setClipChildren(false);
         tabsView.setPadding(dp(DialogsActivity.MAIN_TABS_MARGIN + 4), dp(DialogsActivity.MAIN_TABS_MARGIN + 4), dp(DialogsActivity.MAIN_TABS_MARGIN + 4), dp(DialogsActivity.MAIN_TABS_MARGIN + 4));
-        tabsView.setMaxWidth(dp(328 + DialogsActivity.MAIN_TABS_MARGIN * 2));
+        tabsView.setMaxWidth(dp(360 + DialogsActivity.MAIN_TABS_MARGIN * 2));
 
-        tabs = new GlassTabView[5];
+        tabs = new GlassTabView[6];
         tabs[INDEX_CHATS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.CHATS, R.string.MainTabsChats);
         tabs[INDEX_CONTACTS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.CONTACTS, R.string.MainTabsContacts);
         tabs[INDEX_SETTINGS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.SETTINGS, R.string.Settings);
         tabs[INDEX_CALLS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.CALLS, R.string.MainTabsCalls);
         tabs[INDEX_PROFILE] = GlassTabView.createAvatar(context, resourceProvider, currentAccount, R.string.MainTabsProfile);
+        tabs[INDEX_TELECLIPS] = GlassTabView.createMainTab(context, resourceProvider, GlassTabView.TabAnimation.TELECLIPS, R.string.TeleClipsNavigation);
+        tabs[INDEX_TELECLIPS].setContentDescription(getString(R.string.TeleClips));
         tabs[INDEX_CHATS].setOnLongClickListener(this::openFoldersSelector);
         tabs[INDEX_CONTACTS].setOnLongClickListener(this::openContactsSelector);
         tabs[INDEX_CALLS].setOnLongClickListener(this::openCallsSelector);
@@ -341,13 +351,18 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         tabsView.addTabToIgnoreClick(tabs[INDEX_CONTACTS]);
         tabsView.addTabToIgnoreClick(tabs[INDEX_PROFILE]);
         tabsView.addTabToIgnoreClick(tabs[INDEX_CALLS]);
+        tabsView.addTabToIgnoreClick(tabs[INDEX_TELECLIPS]);
 
-        for (int index = 0; index < tabs.length; index++) {
+        for (int index : new int[]{INDEX_CHATS, INDEX_TELECLIPS, INDEX_CONTACTS, INDEX_SETTINGS, INDEX_CALLS, INDEX_PROFILE}) {
             final GlassTabView view = tabs[index];
 
             final int position = indexToPosition(index);
             tabs[index].setOnClickListener(v -> {
                 if (viewPager.isManualScrolling() || viewPager.isTouch()) {
+                    return;
+                }
+                if (index == INDEX_TELECLIPS) {
+                    if (TeleClipsActivity.isEnabled()) presentFragment(new TeleClipsActivity(currentAccount));
                     return;
                 }
 
@@ -367,6 +382,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             tabsView.setViewVisible(view, true, false);
         }
         checkUi_callTabVisible(getUserConfig().showCallsTab, false);
+        checkTeleClipsTab();
 
         selectTab(viewPager.getCurrentPosition(), false);
 
@@ -1036,6 +1052,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
     @Override
     public boolean onFragmentCreate() {
+        MessagesController.getGlobalMainSettings().registerOnSharedPreferenceChangeListener(teleClipsPreferenceListener);
         observersGroup = NotificationCenter.getInstance(currentAccount)
             .createObserversGroup(this)
             .add(NotificationCenter.fileLoaded)
@@ -1055,6 +1072,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
 
     @Override
     public void onFragmentDestroy() {
+        MessagesController.getGlobalMainSettings().unregisterOnSharedPreferenceChangeListener(teleClipsPreferenceListener);
         Bulletin.removeDelegate(this);
         Bulletin.removeDelegate(contentView);
 
@@ -1112,6 +1130,12 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         if (tabsView != null) {
             tabsView.setViewVisible(tabs[INDEX_SETTINGS], !callTabsVisible, animated);
             tabsView.setViewVisible(tabs[INDEX_CALLS], callTabsVisible, animated);
+        }
+    }
+
+    private void checkTeleClipsTab() {
+        if (tabsView != null && tabs != null && tabs[INDEX_TELECLIPS] != null) {
+            tabsView.setViewVisible(tabs[INDEX_TELECLIPS], TeleClipsActivity.isEnabled(), true);
         }
     }
 
